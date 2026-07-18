@@ -1,0 +1,156 @@
+from pymycobot.mybuddy import MyBuddy
+import cv2
+import time
+import threading
+
+mc = MyBuddy('/dev/ttyACM0', 115200)
+time.sleep(1)
+
+REST_LEFT  = [-20.21, 96.94, -17.13, -44.29, 116.36, 23.02]
+REST_RIGHT = [19.16, -82.96, -2.63, 54.75, -121.55, 77]
+
+HEART_LEFT  = [13.79, -73.3, -53.43, -43.5, -123.83, 86.57]
+HEART_RIGHT = [-8.43, 74.53, 43.06, 51.59, 136.49, 91.14]
+
+WAVE_R_LEFT  = [1.05, -70.92, -52.82, -2.54, -90.52, 86.57]
+WAVE_R_RIGHT = [3.69, 48.51, 1.84, 12.12, 69.25, 94.92]
+
+WAVE_L_LEFT  = [-9.49, -22.76, -44.82, -0.43, -81.47, 86.57]
+WAVE_L_RIGHT = [-0.96, 64.59, 70.75, -6.76, 70.75, 94.92]
+
+# -- Video player state ------------------------------------------
+_video_path  = None
+_video_lock  = threading.Lock()
+_stop_flag   = threading.Event()
+_player_thread = None
+
+def _player_loop():
+    """Background thread: loops current video until stopped or path changes."""
+    cap = None
+    current_path = None
+
+    while not _stop_flag.is_set():
+        with _video_lock:
+            path = _video_path
+
+        if path is None:
+            if cap:
+                cap.release()
+                cap = None
+                current_path = None
+            time.sleep(0.05)
+            continue
+
+        # Switch video if path changed
+        if path != current_path:
+            if cap:
+                cap.release()
+            cap = cv2.VideoCapture(path)
+            current_path = path
+            cv2.namedWindow("MyBuddy", cv2.WINDOW_NORMAL)
+            cv2.setWindowProperty("MyBuddy", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+        ret, frame = cap.read()
+        if not ret:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # loop
+            continue
+
+        cv2.imshow("MyBuddy", frame)
+        cv2.waitKey(30)
+
+    # Cleanup on stop
+    if cap:
+        cap.release()
+    cv2.destroyAllWindows()
+
+
+def start_player():
+    global _player_thread
+    _stop_flag.clear()
+    _player_thread = threading.Thread(target=_player_loop, daemon=True)
+    _player_thread.start()
+
+
+def play_emo(path):
+    """Switch to this video immediately ï¿½ loops until changed or stopped."""
+    global _video_path
+    with _video_lock:
+        _video_path = path
+    time.sleep(0.1)   # let thread pick up new path
+
+
+def stop_emo():
+    """Stop video and close window."""
+    global _video_path
+    with _video_lock:
+        _video_path = None
+    _stop_flag.set()
+    if _player_thread:
+        _player_thread.join(timeout=2)
+    cv2.destroyAllWindows()
+
+# -- Robot helpers -----------------------------------------------
+
+def send_both(left, right, speed=45, settle=2.0):
+    mc.send_angles(1, left, speed)
+    time.sleep(0.1)
+    mc.send_angles(2, right, speed)
+    time.sleep(settle)
+
+
+def go_to_rest():   # close window the moment rest starts
+    send_both(REST_LEFT, REST_RIGHT, speed=45, settle=4.0)
+    print("At rest.")
+    stop_emo()
+
+def heart_gesture():
+    print("Starting heart gesture...")
+
+    waves = [
+        (WAVE_R_LEFT, WAVE_R_RIGHT, "right", '/home/er/emo/look_left.mp4'),
+        (WAVE_L_LEFT, WAVE_L_RIGHT, "left",  '/home/er/emo/look_right.mp4'),
+        (WAVE_R_LEFT, WAVE_R_RIGHT, "right", '/home/er/emo/look_left.mp4'),
+        (WAVE_L_LEFT, WAVE_L_RIGHT, "left",  '/home/er/emo/look_right.mp4'),
+        (WAVE_R_LEFT, WAVE_R_RIGHT, "right", '/home/er/emo/look_left.mp4'),
+        (WAVE_L_LEFT, WAVE_L_RIGHT, "left",  '/home/er/emo/look_right.mp4')
+        
+    ]
+
+    for left_ang, right_ang, direction, video in waves:
+        print(f"  {direction} wave...")
+        play_emo(video)                 # instantly switches display
+        send_both(left_ang, right_ang, speed=60, settle=1.0)
+
+    # Heart pose
+    print("  heart pose...")
+    play_emo('/home/er/emo/look_happy.mp4')
+    send_both(HEART_LEFT, HEART_RIGHT, speed=45, settle=4.0)
+
+    go_to_rest()   # stops video + closes window automatically
+    print("Heart gesture complete.")
+
+
+# -- Main --------------------------------------------------------
+
+try:
+    mc.power_on()
+    time.sleep(2)
+    start_player()   # start background video thread once
+    go_to_rest()
+    print("Robot ready. Type 'heart' to perform gesture, 'quit' to exit:")
+    while True:
+        user_input = input(">> ").strip().lower()
+        if user_input == "heart":
+            start_player()   # restart thread for each gesture
+            heart_gesture()
+        elif user_input == "quit":
+            print("Shutting down...")
+            go_to_rest()
+            break
+        else:
+            print(f"Unknown: '{user_input}'. Try 'heart' or 'quit'.")
+except KeyboardInterrupt:
+    print("\nInterrupted  returning to rest")
+    go_to_rest()
+finally:
+    print("Done")

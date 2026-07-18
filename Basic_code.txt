@@ -1,0 +1,13 @@
+from pymycobot.mybuddy import MyBuddy
+import time
+
+buddy = MyBuddy('/dev/ttyACM0', 115200)
+
+buddy.power_on()
+time.sleep(2)
+
+buddy.send_angles(
+    arm=1,
+    angles=[0, 0, 0, 0, 0, 0],
+    speed=20
+)

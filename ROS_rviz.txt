@@ -1,0 +1,10 @@
+cd ~/ros2_ws
+colcon build --packages-select mybuddy
+source install/setup.bash
+
+#rviz and a slider component wilopen
+ros2 launch mybuddy slider_control.launch.py
+
+
+#It will open rviz to show the model following effect
+ros2 launch mybuddy mybuddy_follow.launch.py

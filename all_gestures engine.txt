@@ -1,0 +1,259 @@
+# -------------------------
+# gesture_engine.py  — CALIBRATED v4 (with emotion display)
+# -------------------------
+
+from pymycobot.mybuddy import MyBuddy
+import cv2
+import time
+import threading
+
+mc = MyBuddy('/dev/ttyACM0', 115200)
+time.sleep(1)
+
+SPEED = 40
+
+# -------------------------
+# CANONICAL POSES
+# -------------------------
+
+REST_LEFT  = [-20.21,  96.94, -17.13, -44.29,  116.36,  23.02]
+REST_RIGHT = [ 19.16, -82.96,  -2.63,  54.75, -121.55,  77.00]
+
+VIA_LEFT   = [-26.8,   47.81,  78.57, -65.12,  113.81,  28.65]
+VIA_RIGHT  = [ 29.8,  -43.15, -81.12,  66.53, -102.83,  98.70]
+
+# Wave
+WAVE_HOLD_LEFT  = [-24,     49,     75,    57,    159,    15    ]
+WAVE_A_RIGHT    = [-159,   -45.96, -81.12, -30,    66.18, 106.17]
+WAVE_B_RIGHT    = [-159,   -45.96, -81.12,  70,    66.18, 106.17]
+WAVE_REPS       = 3
+
+# Heart
+HEART_LEFT          = [ 13.79, -73.30, -53.43, -43.50, -123.83,  86.57]
+HEART_RIGHT         = [ -8.43,  74.53,  43.06,  51.59,  136.49,  91.14]
+HEART_WAVE_R_LEFT   = [  1.05, -70.92, -52.82,  -2.54,  -90.52,  86.57]
+HEART_WAVE_R_RIGHT  = [  3.69,  48.51,   1.84,  12.12,   69.25,  94.92]
+HEART_WAVE_L_LEFT   = [ -9.49, -22.76, -44.82,  -0.43,  -81.47,  86.57]
+HEART_WAVE_L_RIGHT  = [ -0.96,  64.59,  70.75,  -6.76,   70.75,  94.92]
+
+# Think
+THINK_LEFT  = [-24.34,  49.65,  75.93,  54.22,  146.60,  22.76]
+THINK_RIGHT = [-28.21,  38.32,  87.09,  60.29, -134.29,  96.59]
+
+# Observe / Explain
+OBSERVE_LEFT  = [-24.34,  49.65,  75.93,  54.22,  146.60,  22.76]
+OBSERVE_RIGHT = [ 28.82, -45.87, -78.50, -60.38, -155.00,  77.00]
+
+# -------------------------
+# EMO VIDEO PATHS
+# -------------------------
+
+EMO_LOOK_LEFT  = '/home/er/emo/look_left.mp4'
+EMO_LOOK_RIGHT = '/home/er/emo/look_right.mp4'
+EMO_HAPPY      = '/home/er/emo/look_happy.mp4'
+
+# -------------------------
+# VIDEO PLAYER (background thread)
+# -------------------------
+
+_video_path    = None
+_video_lock    = threading.Lock()
+_stop_flag     = threading.Event()
+_player_thread = None
+
+
+def _player_loop():
+    cap          = None
+    current_path = None
+
+    while not _stop_flag.is_set():
+        with _video_lock:
+            path = _video_path
+
+        if path is None:
+            if cap:
+                cap.release()
+                cap = None
+                current_path = None
+            time.sleep(0.05)
+            continue
+
+        if path != current_path:
+            if cap:
+                cap.release()
+            cap = cv2.VideoCapture(path)
+            current_path = path
+            cv2.namedWindow("MyBuddy", cv2.WINDOW_NORMAL)
+            cv2.setWindowProperty("MyBuddy", cv2.WND_PROP_FULLSCREEN,
+                                  cv2.WINDOW_FULLSCREEN)
+
+        ret, frame = cap.read()
+        if not ret:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)   # loop
+            continue
+
+        cv2.imshow("MyBuddy", frame)
+        cv2.waitKey(30)
+
+    if cap:
+        cap.release()
+    cv2.destroyAllWindows()
+
+
+def _start_player():
+    global _player_thread, _stop_flag
+    _stop_flag.clear()
+    _player_thread = threading.Thread(target=_player_loop, daemon=True)
+    _player_thread.start()
+
+
+def _play_emo(path):
+    """Switch displayed video instantly — loops until changed."""
+    global _video_path
+    with _video_lock:
+        _video_path = path
+    time.sleep(0.1)
+
+
+def _stop_player():
+    """Stop video and close window."""
+    global _video_path, _stop_flag
+    with _video_lock:
+        _video_path = None
+    _stop_flag.set()
+    if _player_thread:
+        _player_thread.join(timeout=2)
+    cv2.destroyAllWindows()
+
+# -------------------------
+# HELPERS
+# -------------------------
+
+def send_both(left, right, speed=SPEED, settle=3.0):
+    mc.send_angles(1, left, speed)
+    time.sleep(0.1)
+    mc.send_angles(2, right, speed)
+    time.sleep(settle)
+
+
+def go_rest():
+    """Via-point → rest. Stops any emotion video."""
+    send_both(VIA_LEFT,  VIA_RIGHT,  speed=SPEED, settle=2.5)
+    send_both(REST_LEFT, REST_RIGHT, speed=SPEED, settle=4.0)
+    _stop_player()   # close screen when back at rest
+
+# -------------------------
+# GESTURES
+# -------------------------
+
+def gesture_wave():
+    """
+    Happy face on screen + right arm waving.
+    Only called on wake word.
+    """
+    try:
+        _start_player()
+        _play_emo(EMO_HAPPY)
+        send_both(WAVE_HOLD_LEFT, WAVE_A_RIGHT, speed=SPEED, settle=3.0)
+        for _ in range(WAVE_REPS):
+            mc.send_angles(2, WAVE_A_RIGHT, SPEED)
+            time.sleep(1.2)
+            mc.send_angles(2, WAVE_B_RIGHT, SPEED)
+            time.sleep(1.2)
+    finally:
+        go_rest()   # stops video + closes window + returns to rest
+
+
+def gesture_heart():
+    """
+    Bilateral sway with look_left/look_right videos,
+    then hold heart pose with happy face.
+    Used for: celebrate, thumbs_up, circuit complete.
+    """
+    try:
+        _start_player()
+
+        waves = [
+            (HEART_WAVE_R_LEFT, HEART_WAVE_R_RIGHT, EMO_LOOK_LEFT),
+            (HEART_WAVE_L_LEFT, HEART_WAVE_L_RIGHT, EMO_LOOK_RIGHT),
+            (HEART_WAVE_R_LEFT, HEART_WAVE_R_RIGHT, EMO_LOOK_LEFT),
+            (HEART_WAVE_L_LEFT, HEART_WAVE_L_RIGHT, EMO_LOOK_RIGHT),
+            (HEART_WAVE_R_LEFT, HEART_WAVE_R_RIGHT, EMO_LOOK_LEFT),
+            (HEART_WAVE_L_LEFT, HEART_WAVE_L_RIGHT, EMO_LOOK_RIGHT),
+        ]
+
+        for left_ang, right_ang, video in waves:
+            _play_emo(video)
+            send_both(left_ang, right_ang, speed=60, settle=1.0)
+
+        # Hold heart pose with happy face
+        _play_emo(EMO_HAPPY)
+        send_both(HEART_LEFT, HEART_RIGHT, speed=45, settle=4.0)
+
+    finally:
+        go_rest()   # stops video + closes window + returns to rest
+
+
+def gesture_think():
+    """
+    Thinking pose — no video, just arm position.
+    Used for: Socratic questions, prompting reasoning.
+    """
+    try:
+        send_both(VIA_LEFT,   VIA_RIGHT,   speed=SPEED, settle=2.5)
+        send_both(THINK_LEFT, THINK_RIGHT, speed=SPEED, settle=5.0)
+    finally:
+        go_rest()
+
+
+def gesture_observe():
+    """
+    Attentive forward-lean pose — no video.
+    Used for: student building, waiting, explaining.
+    """
+    try:
+        send_both(VIA_LEFT,     VIA_RIGHT,     speed=SPEED, settle=2.5)
+        send_both(OBSERVE_LEFT, OBSERVE_RIGHT, speed=SPEED, settle=5.0)
+    finally:
+        go_rest()
+
+
+# -------------------------
+# ALIASES
+# -------------------------
+
+gesture_celebrate = gesture_heart    # celebrate → heart
+gesture_explain   = gesture_observe  # explain   → observe pose
+gesture_thumbs_up = gesture_heart    # thumbs_up → heart (no separate calibration yet)
+
+# -------------------------
+# DISPATCHER
+# -------------------------
+
+GESTURE_MAP = {
+    "wave":         gesture_wave,
+    "celebrate":    gesture_celebrate,
+    "heart":        gesture_heart,
+    "thumbs_up":    gesture_thumbs_up,
+    "think":        gesture_think,
+    "observe":      gesture_observe,
+    "explain":      gesture_explain,
+    "none":         lambda: None,
+}
+
+
+def run_gesture(name: str):
+    """
+    Public entry point called from buddy_integrated.py.
+    Unknown names silently fall back to 'none'.
+    """
+    func = GESTURE_MAP.get(name, GESTURE_MAP["none"])
+    try:
+        func()
+    except Exception as e:
+        print(f"[gesture_engine] '{name}' failed: {e}")
+        try:
+            go_rest()
+        except Exception:
+            pass
+

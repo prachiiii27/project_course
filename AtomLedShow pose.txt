@@ -1,0 +1,70 @@
+cat > face_posture.py << 'EOF'
+from pymycobot.mybuddy import MyBuddy
+import time
+
+mc = MyBuddy('/dev/ttyACM0', 115200)
+time.sleep(1)
+
+REST_LEFT  = [-20.21, 96.94, -17.13, -44.29, 116.36, 23.02]
+REST_RIGHT = [19.16, -82.96, -2.63, 54.75, -121.55, 77]
+
+VIA_LEFT   = [-26.8, 47.81, 78.57, -65.12, 113.81, 28.65]
+VIA_RIGHT  = [29.8, -43.15, -81.12, 66.53, -102.83, 98.7]
+
+FACE_LEFT  = [-95.18, 93.86, 14.23, 79.36, 1.23, 86.57]
+FACE_RIGHT = [87.71, -84.72, -34.62, -47.02, -24.34, 115.13]
+
+SPEED = 40
+
+def send_both(left, right, speed=SPEED, settle=3.0):
+    mc.send_angles(1, left, speed)
+    time.sleep(0.1)
+    mc.send_angles(2, right, speed)
+    time.sleep(settle)
+
+def go_to_rest():
+    print("  via-point...")
+    send_both(VIA_LEFT, VIA_RIGHT, speed=SPEED, settle=2.5)
+    print("  rest...")
+    send_both(REST_LEFT, REST_RIGHT, speed=SPEED, settle=4.0)
+    print("At rest.")
+
+def face_posture():
+    print("  via-point...")
+    send_both(VIA_LEFT, VIA_RIGHT, speed=SPEED, settle=2.5)
+    print("  face posture...")
+    send_both(FACE_LEFT, FACE_RIGHT, speed=SPEED, settle=3.0)
+    print("Holding for 4 seconds...")
+    time.sleep(4)
+    go_to_rest()
+    print("Face posture complete.")
+
+try:
+    mc.power_on()
+    time.sleep(2)
+    go_to_rest()
+    print("Robot ready. Commands: 'face' | 'quit'")
+
+    while True:
+        user_input = input(">> ").strip().lower()
+        if user_input == "face":
+            face_posture()
+        elif user_input == "quit":
+            print("Shutting down...")
+            go_to_rest()
+            break
+        else:
+            print(f"Unknown command: '{user_input}'. Try 'face' or 'quit'.")
+
+except KeyboardInterrupt:
+    print("\nInterrupted — returning to rest")
+    go_to_rest()
+finally:
+    print("Done")
+EOF
+python3 face_posture.py
+```
+
+Path is safe in both directions:
+```
+rest → via-point → face posture (hold 4s) → via-point → rest

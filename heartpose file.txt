@@ -1,0 +1,94 @@
+cat > heart.py << 'EOF'
+from pymycobot.mybuddy import MyBuddy
+import time
+
+mc = MyBuddy('/dev/ttyACM0', 115200)
+time.sleep(1)
+
+REST_LEFT  = [-20.21, 96.94, -17.13, -44.29, 116.36, 23.02]
+REST_RIGHT = [19.16, -82.96, -2.63, 54.75, -121.55, 77]
+
+HEART_LEFT  = [13.79, -73.3, -53.43, -43.5, -123.83, 86.57]
+HEART_RIGHT = [-8.43, 74.53, 43.06, 51.59, 136.49, 91.14]
+
+WAVE_R_LEFT  = [1.05, -70.92, -52.82, -2.54, -90.52, 86.57]
+WAVE_R_RIGHT = [3.69, 48.51, 1.84, 12.12, 69.25, 94.92]
+
+WAVE_L_LEFT  = [-9.49, -22.76, -44.82, -0.43, -81.47, 86.57]
+WAVE_L_RIGHT = [-0.96, 64.59, 70.75, -6.76, 70.75, 94.92]
+
+def send_both(left, right, speed=45, settle=2.5):
+    mc.send_angles(1, left, speed)
+    time.sleep(0.1)
+    mc.send_angles(2, right, speed)
+    time.sleep(settle)
+
+def go_to_rest():
+    send_both(REST_LEFT, REST_RIGHT, speed=45, settle=4.0)
+    print("At rest.")
+
+def heart_gesture():
+    print("Starting heart gesture...")
+
+    # right wave
+    print("  right wave...")
+    send_both(WAVE_R_LEFT, WAVE_R_RIGHT, speed=45, settle=1.5)
+
+    # left wave
+    print("  left wave...")
+    send_both(WAVE_L_LEFT, WAVE_L_RIGHT, speed=45, settle=1.5)
+
+    # right wave
+    print("  right wave...")
+    send_both(WAVE_R_LEFT, WAVE_R_RIGHT, speed=45, settle=1.5)
+
+    # left wave
+    print("  left wave...")
+    send_both(WAVE_L_LEFT, WAVE_L_RIGHT, speed=45, settle=1.5)
+
+    # right wave
+    print("  right wave...")
+    send_both(WAVE_R_LEFT, WAVE_R_RIGHT, speed=45, settle=1.5)
+
+    # left wave
+    print("  left wave...")
+    send_both(WAVE_L_LEFT, WAVE_L_RIGHT, speed=45, settle=1.5)
+
+    # right wave
+    print("  right wave...")
+    send_both(WAVE_R_LEFT, WAVE_R_RIGHT, speed=45, settle=1.5)
+
+    # left wave
+    print("  left wave...")
+    send_both(WAVE_L_LEFT, WAVE_L_RIGHT, speed=45, settle=1.5)
+
+    # hold heart pose
+    print("  heart pose...")
+    send_both(HEART_LEFT, HEART_RIGHT, speed=45, settle=4.0)
+
+    # return to rest
+    go_to_rest()
+    print("Heart gesture complete.")
+
+try:
+    mc.power_on()
+    time.sleep(2)
+    go_to_rest()
+    print("Robot ready. Type 'Heart' to perform gesture, 'quit' to exit:")
+    while True:
+        user_input = input(">> ").strip()
+        if user_input.lower() == "heart":
+            heart_gesture()
+        elif user_input.lower() == "quit":
+            print("Shutting down...")
+            go_to_rest()
+            break
+        else:
+            print(f"Unknown command: '{user_input}'. Try 'Heart' or 'quit'.")
+except KeyboardInterrupt:
+    print("\nInterrupted — returning to rest")
+    go_to_rest()
+finally:
+    print("Done")
+EOF
+python3 heart.py

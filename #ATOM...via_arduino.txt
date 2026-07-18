@@ -1,0 +1,100 @@
+#ATOM
+#include "M5Atom.h"
+
+// --- Color Definitions ---
+#define G 0x00FF00 // Green
+#define R 0xFF0000 // Red
+#define X 0x000000 // Off (Black)
+
+// --- Pixel Art Arrays (5x5 = 25 pixels) ---
+
+// 1. SMILE (Green)
+uint32_t smile[] = {
+  X, X, X, X, X,
+  X, G, X, G, X,
+  X, X, X, X, X,
+  G, X, X, X, G,
+  X, G, G, G, X
+};
+
+// 2. TICK / CHECK (Green)
+uint32_t tick[] = {
+  X, X, X, X, X,
+  X, X, X, X, G,
+  X, X, X, G, X,
+  G, X, G, X, X,
+  X, G, X, X, X
+};
+
+// 3. SAD (Red)
+uint32_t sad[] = {
+  X, X, X, X, X,
+  X, R, X, R, X,
+  X, X, X, X, X,
+  X, R, R, R, X,
+  R, X, X, X, R
+};
+
+// 4. CROSS (Red)
+uint32_t cross[] = {
+  R, X, X, X, R,
+  X, R, X, R, X,
+  X, X, R, X, X,
+  X, R, X, R, X,
+  R, X, X, X, R
+};
+
+void setup() {
+  M5.begin(true, false, true); // Init Atom-Matrix (Serial Enable, I2C Disable, Display Enable)
+  delay(50);
+  M5.dis.fillpix(0x000000); // Clear screen on startup
+}
+
+void loop() {
+  // Listen for commands from the Robot Base (Python Script)
+  if (Serial.available() > 0) {
+    char command = Serial.read();
+
+    switch (command) {
+      case 's': // Smile
+        M5.dis.displaybuff((uint8_t *)smile); 
+        break;
+      case 't': // Tick
+        M5.dis.displaybuff((uint8_t *)tick); 
+        break;
+      case 'f': // Frown/Sad
+        M5.dis.displaybuff((uint8_t *)sad); 
+        break;
+      case 'c': // Cross
+        M5.dis.displaybuff((uint8_t *)cross); 
+        break;
+      case 'x': // Clear/Off
+        M5.dis.fillpix(X);
+        break;
+    }
+  }
+  M5.update();
+}
+
+
+
+
+
+
+
+................................................................
+
+#include "M5Atom.h"
+
+void setup() {
+    M5.begin(true, false, true);  // Init M5Atom
+
+    // Turn all 25 LEDs GREEN
+    for (int i = 0; i < 25; i++) {
+        M5.dis.drawpix(i, 0x00FF00);
+    }
+}
+
+void loop() {
+    // Nothing needed
+}

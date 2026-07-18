@@ -1,0 +1,13 @@
+1) using ssh
+open terminal and connect robo and your device with same wifi and then
+
+ssh er@<ip_address>
+
+
+
+2) real vnc
+connect robo and your device with same wifi
+
+..................
+
+PASSWORD: Elephant

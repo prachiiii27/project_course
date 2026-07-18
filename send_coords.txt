@@ -1,0 +1,33 @@
+
+# When setting the coordinates, different series of manipulators have different joint structures. For the same set of coordinates, different series of manipulators will show different postures.
+
+
+'''Parameters
+id – 1/2/3 (L/R/W).
+coord – 1 ~ 6 (x/y/z/rx/ry/rz)
+data – Coordinate value
+speed – 0 ~ 100'''
+
+
+
+
+from pymycobot.mybuddy import MyBuddy
+import time
+mc = MyBuddy("/dev/ttyACM0", 115200)
+
+# Get the coordinates and posture of the current head of the left arm
+coords = mc.get_coords(1)
+print(coords)
+
+# Intelligently plan the route, let the head reach the coordinates of [57.0, -107.4, 316.3] in a linear manner, and maintain the attitude of [-93.81, -12.71, -163.49], and the speed is 80mm/s
+mc.send_coords(1, [57.0, -107.4, 316.3, -93.81, -12.71, -163.49], 80, 1)
+
+time.sleep(1.5)
+
+# Intelligently plan the route, let the head reach the coordinates of [-13.7, -107.5, 223.9] in a linear manner, and maintain the attitude of [165.52, -75.41, -73.52], with a speed of 80mm/s
+mc.send_coords(1, [-13.7, -107.5, 223.9, 165.52, -75.41, -73.52], 80, 1)
+
+time.sleep(1.5)
+
+# To change only the x-coordinate of the head of the left arm, set the x-coordinate of the head to -40. Let it plan the route intelligently and move the head to the changed position, with a speed of 70mm/s
+mc.send_coord(1, 1, -40, 70)

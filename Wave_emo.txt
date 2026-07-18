@@ -1,0 +1,147 @@
+cat > wave_emo.py << 'EOF'
+from pymycobot.mybuddy import MyBuddy
+import cv2
+import time
+import threading
+
+mc = MyBuddy('/dev/ttyACM0', 115200)
+time.sleep(1)
+
+REST_LEFT    = [-20.21, 96.94, -17.13, -44.29, 116.36, 23.02]
+REST_RIGHT   = [19.16, -82.96, -2.63, 54.75, -121.55, 77]
+
+VIA_LEFT     = [-26.8, 47.81, 78.57, -65.12, 113.81, 28.65]
+VIA_RIGHT    = [29.8, -43.15, -81.12, 66.53, -102.83, 98.7]
+
+WAVE_LEFT    = [-24, 49, 75, 57, 159, 15]
+WAVE_A_RIGHT = [-159, -45.96, -81.12, -30, 66.18, 106.17]
+WAVE_B_RIGHT = [-159, -45.96, -81.12,  70, 66.18, 106.17]
+
+# -- Video player state ------------------------------------------
+_video_path  = None
+_video_lock  = threading.Lock()
+_stop_flag   = threading.Event()
+_player_thread = None
+
+def _player_loop():
+    """Background thread: loops current video until stopped or path changes."""
+    cap = None
+    current_path = None
+
+    while not _stop_flag.is_set():
+        with _video_lock:
+            path = _video_path
+
+        if path is None:
+            if cap:
+                cap.release()
+                cap = None
+                current_path = None
+            time.sleep(0.05)
+            continue
+
+        # Switch video if path changed
+        if path != current_path:
+            if cap:
+                cap.release()
+            cap = cv2.VideoCapture(path)
+            current_path = path
+            cv2.namedWindow("MyBuddy", cv2.WINDOW_NORMAL)
+            cv2.setWindowProperty("MyBuddy", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+        ret, frame = cap.read()
+        if not ret:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # loop
+            continue
+
+        cv2.imshow("MyBuddy", frame)
+        cv2.waitKey(30)
+
+    # Cleanup on stop
+    if cap:
+        cap.release()
+    cv2.destroyAllWindows()
+
+def start_player():
+    global _player_thread
+    _stop_flag.clear()
+    _player_thread = threading.Thread(target=_player_loop, daemon=True)
+    _player_thread.start()
+
+
+def play_emo(path):
+    """Switch to this video immediately ï¿½ loops until changed or stopped."""
+    global _video_path
+    with _video_lock:
+        _video_path = path
+    time.sleep(0.1)   # let thread pick up new path
+
+
+def stop_emo():
+    """Stop video and close window."""
+    global _video_path
+    with _video_lock:
+        _video_path = None
+    _stop_flag.set()
+    if _player_thread:
+        _player_thread.join(timeout=2)
+    cv2.destroyAllWindows()
+
+# -- Robot helpers -----------------------------------------------
+
+SPEED = 40
+WAVE_REPS = 3
+
+def send_both(left, right, speed=SPEED, settle=3.0):
+    mc.send_angles(1, left, speed)
+    time.sleep(0.1)
+    mc.send_angles(2, right, speed)
+    time.sleep(settle)
+
+def go_to_rest():
+    print("  via-point...")
+    send_both(VIA_LEFT, VIA_RIGHT, speed=SPEED, settle=2.5)
+    print("  rest...")
+    send_both(REST_LEFT, REST_RIGHT, speed=SPEED, settle=4.0)
+    print("At rest.")
+    stop_emo()
+
+def wave_emo():
+    print("Waving...")
+    play_emo('/home/er/emo/look_happy.mp4')
+    send_both(WAVE_LEFT, WAVE_A_RIGHT, speed=SPEED, settle=3.0)
+    for _ in range(WAVE_REPS):
+        mc.send_angles(2, WAVE_A_RIGHT, SPEED)
+        time.sleep(1.2)
+        mc.send_angles(2, WAVE_B_RIGHT, SPEED)
+        time.sleep(1.2)
+    print("  returning via via-point...")
+    go_to_rest()
+    print("Wave complete.")
+
+try:
+    mc.power_on()
+    time.sleep(2)
+    start_player()
+    go_to_rest()
+    print("Robot ready. Commands: 'hey' | 'quit'")
+
+    while True:
+        user_input = input(">> ").strip().lower()
+        if user_input == "hey":
+	    start_player()
+            wave()
+        elif user_input == "quit":
+            print("Shutting down...")
+            go_to_rest()
+            break
+        else:
+            print(f"Unknown command: '{user_input}'. Try 'hey' or 'quit'.")
+
+except KeyboardInterrupt:
+    print("\nInterrupted — returning to rest")
+    go_to_rest()
+finally:
+    print("Done")
+EOF
+python3 wave_emo.py

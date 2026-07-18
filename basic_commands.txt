@@ -1,0 +1,32 @@
+#used imports
+from pymycobot.mybuddy import MyBuddy
+import time
+mc = MyBuddy('/dev/ttyACM0', 115200)
+
+# Send angles to the six joints of the left arm
+mc.send_angles(1, [0, 0, 0, 0, 0, 0], 50)
+
+'''Parameters
+id – 1/2/3 (L/R/W)
+joint_id (int) – 1 - 7 (7 is gripper)
+joint – 1 ~ 6
+angle – int
+speed – 1 ~ 100'''
+
+# Relax all joints,you can manually swing the robotic arm
+
+mc.release_all_servos()
+
+# Get the joint angle of the left arm
+angles = mc.get_angles(1)
+print("left angles: ",angles)
+
+
+
+# Check both arms responding
+print('Left angles:', mc.get_angles(1))
+print('Right angles:', mc.get_angles(2))
+
+
+# to power on
+mc.power_on()
